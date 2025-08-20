@@ -3,17 +3,26 @@ import streamlit as st
 from openai import OpenAI
 import openai  # needed for error handling
 
-# Initialize client
-client = OpenAI()
+# ✅ Load API key from Streamlit secrets (best for Streamlit Cloud)
+# Fallback to environment variable if running locally
+if "OPENAI_API_KEY" in st.secrets:
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+else:
+    client = OpenAI()
 
-def safe_chat_completion(messages, model="gpt-4o-mini", max_retries=5):
+# Max number of messages to keep in context
+MAX_HISTORY = 6  
+
+def safe_chat_completion(messages, model="gpt-4o-mini", max_retries=5, min_delay=2):
     """Wrapper to handle OpenAI errors with exponential backoff"""
     for attempt in range(max_retries):
         try:
+            time.sleep(min_delay)  # ⏱ small delay before each request
             return client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.7,
+                max_tokens=500,
             )
         except openai.RateLimitError:
             wait_time = min(2 ** attempt, 60)  # exponential backoff up to 60s
@@ -36,7 +45,7 @@ def safe_chat_completion(messages, model="gpt-4o-mini", max_retries=5):
     return None
 
 # --- Streamlit UI ---
-st.title("💬 Chatbot with Error Handling")
+st.title("🤖 Apoorv's Chatbot")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "system", "content": "You are a helpful assistant."}]
@@ -46,10 +55,13 @@ user_input = st.text_input("You:", key="input")
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
+    # ✂️ Keep only the last MAX_HISTORY messages
+    context = st.session_state.messages[-MAX_HISTORY:]
+
     with st.spinner("Thinking..."):
-        response = safe_chat_completion(st.session_state.messages)
-    
+        response = safe_chat_completion(context)
+
     if response:
         reply = response.choices[0].message.content
         st.session_state.messages.append({"role": "assistant", "content": reply})
-        st.write(f"**Bot:** {reply}")
+        st.write(f"**Apoorv's Chatbot:** {reply}")
